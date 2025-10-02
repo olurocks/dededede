@@ -2,7 +2,11 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 
-const dbPath = path.join(process.cwd(), 'ctf.db');
+const dbPath =
+  process.env.NODE_ENV === "production"
+    ? "/app/data/ctf.db"
+    : path.join(process.cwd(), "ctf.db");
+  
 const db = new Database(dbPath);
 
 // Initialize tables
