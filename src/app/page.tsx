@@ -1,103 +1,205 @@
-import Image from "next/image";
+// src/app/page.tsx
+"use client";
+
+import { useAccount, useSignMessage } from "wagmi";
+import { SiweMessage } from "siwe";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { ConnectButton } from "./components/WalletConnect";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string>("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
+  useEffect(() => {
+    // Check if already authenticated
+    fetch("/api/status")
+      .then((res) => {
+        if (res.ok) {
+          setIsAuthenticated(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSignIn = async () => {
+    if (!address || !isConnected) return;
+
+    try {
+      setIsLoading(true);
+      setError("");
+
+      // Get nonce
+      const nonceRes = await fetch("/api/siwe-nonce", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address }),
+      });
+
+      if (!nonceRes.ok) throw new Error("Failed to get nonce");
+
+      const { nonce } = await nonceRes.json();
+
+      // Create SIWE message
+      const message = new SiweMessage({
+        domain: window.location.host,
+        address,
+        statement: "Sign in to CTF Challenge Platform",
+        uri: window.location.origin,
+        version: "1",
+        chainId: 11155111, // Sepolia
+        nonce,
+      });
+
+      const preparedMessage = message.prepareMessage();
+
+      // Sign message
+      const signature = await signMessageAsync({
+        message: preparedMessage,
+      });
+
+      // Verify signature
+      const loginRes = await fetch("/api/siwe-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: preparedMessage,
+          signature,
+        }),
+      });
+
+      if (!loginRes.ok) throw new Error("Authentication failed");
+
+      // Redirect to phase 1
+      router.push("/phase1");
+    } catch (err) {
+      console.error("Sign in error:", err);
+      setError(err instanceof Error ? err.message : "Failed to sign in");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isAuthenticated) {
+    return (
+      <main style={styles.container}>
+        <h1 style={styles.title}>Phantom Vault</h1>
+        <p style={styles.text}>Signed In</p>
+        <button onClick={() => router.push("/phase1")} style={styles.button}>
+          Go to Challenges
+        </button>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+    );
+  }
+
+  return (
+    <main style={styles.container}>
+      <h1 style={styles.title}>Phantom Vault</h1>
+      <p style={styles.subtitle}>Two-Phase Smart Contract Security Challenge</p>
+
+      <div style={styles.card}>
+        <h2 style={styles.cardTitle}>Getting Started</h2>
+        <ol style={styles.list}>
+          <li>Connect your wallet</li>
+          <li>Sign the authentication message</li>
+          <li>Complete Phase 1</li>
+          <li>Complete Phase 2</li>
+          <li>Claim your flag!</li>
+        </ol>
+      </div>
+
+      {!isConnected ? (
+        <div style={styles.connectSection}>
+          <p style={styles.text}>Connect your wallet to begin</p>
+          <ConnectButton />
+        </div>
+      ) : (
+        <div style={styles.authSection}>
+          <p style={styles.address}>Connected: {address}</p>
+          <button
+            onClick={handleSignIn}
+            disabled={isLoading}
+            style={styles.button}
+          >
+            {isLoading ? "Signing In..." : "Sign In with Ethereum"}
+          </button>
+          {error && <p style={styles.error}>{error}</p>}
+        </div>
+      )}
+    </main>
   );
 }
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    maxWidth: "600px",
+    margin: "50px auto",
+    padding: "20px",
+    fontFamily: "Arial, sans-serif",
+  },
+  title: {
+    fontSize: "32px",
+    fontWeight: "bold",
+    marginBottom: "10px",
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: "16px",
+    textAlign: "center",
+    color: "#666",
+    marginBottom: "30px",
+  },
+  card: {
+    border: "1px solid #ddd",
+    borderRadius: "8px",
+    padding: "20px",
+    marginBottom: "30px",
+    // backgroundColor: "#f9f9f9",
+  },
+  cardTitle: {
+    fontSize: "20px",
+    fontWeight: "bold",
+    marginBottom: "15px",
+  },
+  list: {
+    lineHeight: "1.8",
+    paddingLeft: "20px",
+  },
+  connectSection: {
+    textAlign: "center",
+    marginTop: "20px",
+  },
+  authSection: {
+    textAlign: "center",
+    marginTop: "20px",
+  },
+  text: {
+    fontSize: "16px",
+    marginBottom: "15px",
+  },
+  address: {
+    fontSize: "14px",
+    color: "#666",
+    marginBottom: "15px",
+    wordBreak: "break-all",
+  },
+  button: {
+    padding: "12px 24px",
+    fontSize: "16px",
+    // backgroundColor: "#0070f3",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "500",
+  },
+  error: {
+    color: "#ff0000",
+    marginTop: "10px",
+    fontSize: "14px",
+  },
+};
